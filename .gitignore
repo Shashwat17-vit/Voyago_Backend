@@ -33,5 +33,5 @@ build/
 .vscode/
 
 ### Application Properties ###
-
-C:\Users\Shashwat\Desktop\cs571-Building UI\project_p101\Voyago_Backend\src\main\resources\application.properties
+src/main/resources/application.properties
+src/main/resources/application-*.properties
