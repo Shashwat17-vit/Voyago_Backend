@@ -6,7 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
-import backend.WelcomeMessage;
+import backend.voyago.SpringBackend.service.WelcomeMessage;
 
 @SpringBootApplication
 public class SpringBackendApplication {
@@ -14,12 +14,12 @@ public class SpringBackendApplication {
 	private static final Logger log = LoggerFactory.getLogger(SpringBackendApplication.class);
 
 	public static void main(String[] args) {
+	
 		SpringApplication.run(SpringBackendApplication.class, args);
 		log.info("Application Started1!");
-
-		var welcome = new WelcomeMessage();
-		System.out.println(welcome.getWelcome());
-	
+		WelcomeMessage message = new WelcomeMessage();
+		System.out.println(message);
+		
 	}
-
+	
 }

@@ -1,4 +1,4 @@
-package backend;
+package backend.voyago.SpringBackend.service;
 
 import org.springframework.stereotype.Component;
 
@@ -8,7 +8,7 @@ public class WelcomeMessage {
     public String getWelcome()
     {
         return "Welcome to Voyago";
-
     }
 
 }
+
