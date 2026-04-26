@@ -19,7 +19,5 @@ public class SpringBackendApplication {
 		log.info("Application Started1!");
 		WelcomeMessage message = new WelcomeMessage();
 		System.out.println(message);
-		
 	}
-	
 }

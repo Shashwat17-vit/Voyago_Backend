@@ -26,6 +26,8 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
         String email = oAuth2User.getAttribute("email");
 
         // TODO Step 6: save user to DB here
+
+        
         // TODO Step 7: generate JWT and append as ?token=jwt here
 
         response.sendRedirect("http://localhost:5173/#/home");
