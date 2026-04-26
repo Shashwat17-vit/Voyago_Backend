@@ -28,7 +28,9 @@ public class SecurityConfig {
                 .requestMatchers("/", "/login", "/error", "/auth/me").permitAll()
                 .anyRequest().authenticated()
             )
-            .oauth2Login(oauth -> oauth.successHandler(successHandler));
+            .oauth2Login(oauth -> oauth
+            .successHandler(successHandler)
+            .failureUrl("http://localhost:5173/#/login"));
         return http.build();
     }
 
