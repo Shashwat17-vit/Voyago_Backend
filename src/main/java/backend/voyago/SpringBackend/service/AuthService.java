@@ -37,7 +37,5 @@ public class AuthService {
 
         return "User registered successfully";
 
-
-
     }
 }
