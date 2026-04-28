@@ -46,7 +46,7 @@ public class LoginController {
 
         // JWT login — principal is the email string set by JwtFilter
         String email = (String) authentication.getPrincipal();
-        return ResponseEntity.ok(Map.of("email", email, "name", ""));
+        return ResponseEntity.ok(Map.of("email", email, "name", "user"));
     }
 
     @PostMapping("/login")
