@@ -10,7 +10,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name="user_information", schema="customer")
+@Table(name="users", schema="customer")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -21,5 +21,6 @@ public class User {
     private String full_name;
     private String email;
     private String password;
+    private String provider;
 }
 

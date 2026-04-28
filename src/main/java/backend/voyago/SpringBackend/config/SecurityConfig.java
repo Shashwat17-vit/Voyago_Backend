@@ -8,6 +8,9 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -16,9 +19,11 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 public class SecurityConfig {
 
     private final OAuth2SuccessHandler successHandler;
+    private final JwtFilter jwtFilter;
 
-    public SecurityConfig(OAuth2SuccessHandler successHandler) {
+    public SecurityConfig(OAuth2SuccessHandler successHandler, JwtFilter jwtFilter) {
         this.successHandler = successHandler;
+        this.jwtFilter = jwtFilter;
     }
 
     @Bean
@@ -27,13 +32,19 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/", "/login", "/error", "/auth/me",
-                                 "/api/auth/signup", "/api/auth/login").permitAll()
-                .anyRequest().authenticated()
+                    .requestMatchers("/", "/login", "/error",
+                                     "/api/auth/signup", "/api/auth/login").permitAll()
+                    .anyRequest().authenticated()
                 )
                 .oauth2Login(oauth -> oauth
-                .successHandler(successHandler)
-                .failureUrl("http://localhost:5173/#/login"));
+                    .successHandler(successHandler)
+                    .failureUrl("http://localhost:5173/#/login"))
+                .exceptionHandling(ex -> ex
+                    .authenticationEntryPoint((request, response, authException) ->
+                        response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized")
+                    )
+                )
+                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 
