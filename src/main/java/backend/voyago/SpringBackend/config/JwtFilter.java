@@ -29,34 +29,39 @@ public class JwtFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException
     {
+        // Check cookie first, then fall back to Authorization header
         String token = extractTokenFromCookies(request);
+        if (token == null) {
+            token = extractTokenFromHeader(request);
+        }
 
-        // If a valid JWT cookie exists, authenticate the user in Spring's security context
         if (token != null && jwtUtil.isTokenValid(token))
         {
             String email = jwtUtil.extractEmail(token);
-
-            // Tell Spring Security this request belongs to this email
             UsernamePasswordAuthenticationToken auth =
                 new UsernamePasswordAuthenticationToken(email, null, List.of());
-
             SecurityContextHolder.getContext().setAuthentication(auth);
         }
 
-        // Continue processing the request regardless — Spring's rules decide what's allowed
         filterChain.doFilter(request, response);
     }
 
     private String extractTokenFromCookies(HttpServletRequest request)
     {
         if (request.getCookies() == null) return null;
-
         for (Cookie cookie : request.getCookies())
         {
-            if ("jwt".equals(cookie.getName()))
-            {
-                return cookie.getValue();
-            }
+            if ("jwt".equals(cookie.getName())) return cookie.getValue();
+        }
+        return null;
+    }
+
+    private String extractTokenFromHeader(HttpServletRequest request)
+    {
+        String header = request.getHeader("Authorization");
+        if (header != null && header.startsWith("Bearer "))
+        {
+            return header.substring(7);
         }
         return null;
     }

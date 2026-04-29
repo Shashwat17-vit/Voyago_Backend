@@ -16,7 +16,7 @@ public class SpringBackendApplication {
 	public static void main(String[] args) {
 	
 		SpringApplication.run(SpringBackendApplication.class, args);
-		log.info("Application Started1!");
+		log.info("Application Started!");
 		WelcomeMessage message = new WelcomeMessage();
 		System.out.println(message);
 	}

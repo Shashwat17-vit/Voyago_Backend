@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import backend.voyago.SpringBackend.dto.LoginRequest;
+import backend.voyago.SpringBackend.model.User;
+import backend.voyago.SpringBackend.repository.UserRepository;
 import backend.voyago.SpringBackend.service.AuthService;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
@@ -21,10 +23,12 @@ import jakarta.servlet.http.HttpServletResponse;
 public class LoginController {
 
     private final AuthService authService;
+    private final UserRepository userRepository;
 
-    public LoginController(AuthService authService)
+    public LoginController(AuthService authService, UserRepository userRepository)
     {
         this.authService = authService;
+        this.userRepository = userRepository;
     }
 
     @GetMapping("/me")
@@ -46,7 +50,21 @@ public class LoginController {
 
         // JWT login — principal is the email string set by JwtFilter
         String email = (String) authentication.getPrincipal();
-        return ResponseEntity.ok(Map.of("email", email, "name", "user"));
+        String name = userRepository.findByEmail(email)
+                .map(User::getFull_name)
+                .orElse(email);
+        return ResponseEntity.ok(Map.of("email", email, "name", name != null ? name : email));
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(HttpServletResponse response) {
+        Cookie cookie = new Cookie("jwt", "");
+        cookie.setHttpOnly(true);
+        cookie.setSecure(false);
+        cookie.setPath("/");
+        cookie.setMaxAge(0); // immediately expire
+        response.addCookie(cookie);
+        return ResponseEntity.ok().build();
     }
 
     @PostMapping("/login")
@@ -62,7 +80,7 @@ public class LoginController {
             cookie.setHttpOnly(true);   // JS cannot read this — protected from XSS
             cookie.setSecure(false);    // set to true in production (requires HTTPS)
             cookie.setPath("/");        // send cookie on every request to this server
-            cookie.setMaxAge(60 * 10); // 10 minutes in seconds
+            cookie.setMaxAge(60 * 60 * 24); // 24 hours
 
             response.addCookie(cookie);
 

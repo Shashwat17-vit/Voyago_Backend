@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import backend.voyago.SpringBackend.model.User;
 import backend.voyago.SpringBackend.repository.UserRepository;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -18,18 +19,20 @@ import jakarta.servlet.http.HttpServletResponse;
 public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
 
     private final UserRepository userRepository;
+    private final JwtUtil jwtUtil;
 
-    public OAuth2SuccessHandler(UserRepository userRepository) 
+    public OAuth2SuccessHandler(UserRepository userRepository, JwtUtil jwtUtil)
     {
-        this.userRepository = userRepository ;
+        this.userRepository = userRepository;
+        this.jwtUtil = jwtUtil;
     }
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
             Authentication authentication) throws IOException, ServletException {
 
-        OAuth2AuthenticationToken token= (OAuth2AuthenticationToken) authentication;
-        OAuth2User oAuth2User = token.getPrincipal() ;
+        OAuth2AuthenticationToken token = (OAuth2AuthenticationToken) authentication;
+        OAuth2User oAuth2User = token.getPrincipal();
 
         String provider = token.getAuthorizedClientRegistrationId();
 
@@ -38,7 +41,7 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
                        : oAuth2User.getAttribute("login"); // GitHub fallback
         String email = oAuth2User.getAttribute("email");
 
-        if (email !=null && !userRepository.existsByEmail(email))
+        if (email != null && !userRepository.existsByEmail(email))
         {
             User user = new User();
             user.setFull_name(name);
@@ -48,7 +51,16 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
             userRepository.save(user);
         }
 
-        // TODO Step 7: generate JWT and append as ?token=jwt here
+        // Generate JWT and set as HttpOnly cookie so all API calls are authenticated
+        if (email != null) {
+            String jwt = jwtUtil.generateToken(email);
+            Cookie cookie = new Cookie("jwt", jwt);
+            cookie.setHttpOnly(true);
+            cookie.setSecure(false); // set true in production (HTTPS)
+            cookie.setPath("/");
+            cookie.setMaxAge(60 * 60 * 24); // 24 hours
+            response.addCookie(cookie);
+        }
 
         response.sendRedirect("http://localhost:5173/#/home");
     }

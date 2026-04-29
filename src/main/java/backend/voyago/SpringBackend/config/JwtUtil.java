@@ -15,7 +15,7 @@ public class JwtUtil {
     // Secret key used to sign the token — must be at least 256 bits for HMAC-SHA256
     // In production this should come from application.properties, not hardcoded
     private static final String SECRET = "voyago-super-secret-key-must-be-32-chars!!";
-    private static final long EXPIRY_MS = 1000 * 60 * 10 ; // 10 minutes
+    private static final long EXPIRY_MS = 1000L * 60 * 60 * 24; // 24 hours
 
     private SecretKey getSigningKey() {
         return Keys.hmacShaKeyFor(SECRET.getBytes());
