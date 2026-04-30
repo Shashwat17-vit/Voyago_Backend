@@ -13,22 +13,21 @@ import backend.voyago.SpringBackend.service.AuthService;
 
 @RestController
 @RequestMapping("/api/auth")
-
 public class AuthController {
 
     private final AuthService authService;
 
-    public AuthController(AuthService authService)
-    {
-        this.authService=authService;
+    public AuthController(AuthService authService) {
+        this.authService = authService;
     }
+
     @PostMapping("/signup")
     public ResponseEntity<Map<String, String>> signup(@RequestBody SignupRequest request) {
-    try {
-        authService.signup(request);
-        return ResponseEntity.ok(Map.of("message", "User registered successfully"));
-    } catch (RuntimeException e) {
-        return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        try {
+            authService.signup(request);
+            return ResponseEntity.ok(Map.of("message", "User registered successfully"));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
-}
 }

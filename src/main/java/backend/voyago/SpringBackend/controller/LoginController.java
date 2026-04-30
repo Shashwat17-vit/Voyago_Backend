@@ -2,6 +2,7 @@ package backend.voyago.SpringBackend.controller;
 
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
@@ -21,6 +22,9 @@ import jakarta.servlet.http.HttpServletResponse;
 @RestController
 @RequestMapping("/api/auth")
 public class LoginController {
+
+    @Value("${frontend.url:http://localhost:5173}")
+    private String frontendUrl;
 
     private final AuthService authService;
     private final UserRepository userRepository;
@@ -60,7 +64,7 @@ public class LoginController {
     public ResponseEntity<Void> logout(HttpServletResponse response) {
         Cookie cookie = new Cookie("jwt", "");
         cookie.setHttpOnly(true);
-        cookie.setSecure(false);
+        cookie.setSecure(frontendUrl.startsWith("https"));
         cookie.setPath("/");
         cookie.setMaxAge(0); // immediately expire
         response.addCookie(cookie);
@@ -78,7 +82,7 @@ public class LoginController {
             // Build the HttpOnly cookie
             Cookie cookie = new Cookie("jwt", token);
             cookie.setHttpOnly(true);   // JS cannot read this — protected from XSS
-            cookie.setSecure(false);    // set to true in production (requires HTTPS)
+            cookie.setSecure(frontendUrl.startsWith("https"));    // set to true in production (requires HTTPS)
             cookie.setPath("/");        // send cookie on every request to this server
             cookie.setMaxAge(60 * 60 * 24); // 24 hours
 
