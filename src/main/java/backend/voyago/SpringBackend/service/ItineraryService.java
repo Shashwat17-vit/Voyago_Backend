@@ -9,6 +9,9 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -71,9 +74,13 @@ public class ItineraryService {
             )
         );
 
-        // Call Python agent
+        // Call Python agent — explicit JSON header so FastAPI receives application/json
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+
         ResponseEntity<Map> response = restTemplate.postForEntity(
-                agentUrl + "/generate-itinerary", body, Map.class);
+                agentUrl + "/generate-itinerary", request, Map.class);
 
         Map<String, Object> agentResult = response.getBody();
 
