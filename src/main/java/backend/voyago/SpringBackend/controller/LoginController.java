@@ -2,7 +2,6 @@ package backend.voyago.SpringBackend.controller;
 
 import java.util.Map;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
@@ -22,9 +21,6 @@ import jakarta.servlet.http.HttpServletResponse;
 @RestController
 @RequestMapping("/api/auth")
 public class LoginController {
-
-    @Value("${frontend.url:http://localhost:5173}")
-    private String frontendUrl;
 
     private final AuthService authService;
     private final UserRepository userRepository;
@@ -64,7 +60,7 @@ public class LoginController {
     public ResponseEntity<Void> logout(HttpServletResponse response) {
         Cookie cookie = new Cookie("jwt", "");
         cookie.setHttpOnly(true);
-        cookie.setSecure(frontendUrl.startsWith("https"));
+        cookie.setSecure(false);
         cookie.setPath("/");
         cookie.setMaxAge(0); // immediately expire
         response.addCookie(cookie);
@@ -74,15 +70,14 @@ public class LoginController {
     @PostMapping("/login")
     public ResponseEntity<Map<String, String>> loginUser(
             @RequestBody LoginRequest request,
-            HttpServletResponse response)   // Spring injects this so we can set a cookie
+            HttpServletResponse response)
     {
         try {
             String token = authService.login(request);
 
-            // Build the HttpOnly cookie
             Cookie cookie = new Cookie("jwt", token);
             cookie.setHttpOnly(true);   // JS cannot read this — protected from XSS
-            cookie.setSecure(frontendUrl.startsWith("https"));    // set to true in production (requires HTTPS)
+            cookie.setSecure(false);    // set to true in production (requires HTTPS)
             cookie.setPath("/");        // send cookie on every request to this server
             cookie.setMaxAge(60 * 60 * 24); // 24 hours
 

@@ -2,7 +2,6 @@ package backend.voyago.SpringBackend.config;
 
 import java.io.IOException;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.core.user.OAuth2User;
@@ -18,9 +17,6 @@ import jakarta.servlet.http.HttpServletResponse;
 
 @Component
 public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
-
-    @Value("${frontend.url:http://localhost:5173}")
-    private String frontendUrl;
 
     private final UserRepository userRepository;
     private final JwtUtil jwtUtil;
@@ -60,12 +56,12 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
             String jwt = jwtUtil.generateToken(email);
             Cookie cookie = new Cookie("jwt", jwt);
             cookie.setHttpOnly(true);
-            cookie.setSecure(frontendUrl.startsWith("https"));
+            cookie.setSecure(false); // set true in production (HTTPS)
             cookie.setPath("/");
             cookie.setMaxAge(60 * 60 * 24); // 24 hours
             response.addCookie(cookie);
         }
 
-        response.sendRedirect(frontendUrl + "/#/home");
+        response.sendRedirect("http://localhost:5173/#/home");
     }
 }
