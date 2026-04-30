@@ -56,7 +56,7 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
             String jwt = jwtUtil.generateToken(email);
             Cookie cookie = new Cookie("jwt", jwt);
             cookie.setHttpOnly(true);
-            cookie.setSecure(false); // set true in production (HTTPS)
+            cookie.setSecure(true);
             cookie.setPath("/");
             cookie.setMaxAge(60 * 60 * 24); // 24 hours
             response.addCookie(cookie);

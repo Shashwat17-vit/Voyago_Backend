@@ -60,7 +60,7 @@ public class LoginController {
     public ResponseEntity<Void> logout(HttpServletResponse response) {
         Cookie cookie = new Cookie("jwt", "");
         cookie.setHttpOnly(true);
-        cookie.setSecure(false);
+        cookie.setSecure(true);
         cookie.setPath("/");
         cookie.setMaxAge(0); // immediately expire
         response.addCookie(cookie);
@@ -77,7 +77,7 @@ public class LoginController {
 
             Cookie cookie = new Cookie("jwt", token);
             cookie.setHttpOnly(true);   // JS cannot read this — protected from XSS
-            cookie.setSecure(false);    // set to true in production (requires HTTPS)
+            cookie.setSecure(true);    // set to true in production (requires HTTPS)
             cookie.setPath("/");        // send cookie on every request to this server
             cookie.setMaxAge(60 * 60 * 24); // 24 hours
 
