@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: 729231827726.dkr.ecr.us-east-2.amazonaws.com/dev/voyago:backend-<FULL_SHA>
+          image: 729231827726.dkr.ecr.us-east-2.amazonaws.com/dev/voyago:backend
           ports:
             - containerPort: 8080
           env:
