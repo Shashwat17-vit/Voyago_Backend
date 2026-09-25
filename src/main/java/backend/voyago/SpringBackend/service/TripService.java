@@ -101,7 +101,6 @@ public class TripService {
 
         prefs.setTrip(trip);
         prefs.setCurrentLocation(request.getCurrentLocation());
-        prefs.setBudget(request.getBudget());
         prefs.setTripType(request.getTripType());
         prefs.setAccommodation(request.getAccommodation());
         prefs.setTransportation(request.getTransportation());

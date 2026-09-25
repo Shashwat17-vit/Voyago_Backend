@@ -65,7 +65,6 @@ public class ItineraryService {
             ),
             "preferences", Map.of(
                 "currentLocation", prefs.getCurrentLocation(),
-                "budget",          prefs.getBudget(),
                 "tripType",        prefs.getTripType(),
                 "accommodation",   prefs.getAccommodation(),
                 "transportation",  prefs.getTransportation(),

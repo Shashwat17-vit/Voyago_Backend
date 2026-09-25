@@ -23,8 +23,6 @@ public class TripPreferences {
     @Column(name = "current_location")
     private String currentLocation;
 
-    private String budget;
-
     @Column(name = "trip_type")
     private String tripType;
 
