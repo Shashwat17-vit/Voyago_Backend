@@ -73,6 +73,12 @@ spec:
                 secretKeyRef:
                   name: voyago-secrets
                   key: COOKIE_SECURE
+            - name: GOOGLE_PLACES_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: voyago-secrets
+                  key: GOOGLE_PLACES_API_KEY
+                  optional: true
           readinessProbe:
             tcpSocket:
               port: 8080

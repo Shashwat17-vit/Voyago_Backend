@@ -25,18 +25,21 @@ public class TripService {
     private final TripItineraryDayRepository dayRepository;
     private final TripEventRepository eventRepository;
     private final UserRepository userRepository;
+    private final PlacesPhotoService placesPhotoService;
 
     public TripService(TripRepository tripRepository,
                        TripRepositoryPerference tripPreferencesRepository,
                        TripItineraryDayRepository dayRepository,
                        TripEventRepository eventRepository,
-                       UserRepository userRepository)
+                       UserRepository userRepository,
+                       PlacesPhotoService placesPhotoService)
     {
         this.tripRepository = tripRepository;
         this.tripPreferencesRepository = tripPreferencesRepository;
         this.dayRepository = dayRepository;
         this.eventRepository = eventRepository;
         this.userRepository = userRepository;
+        this.placesPhotoService = placesPhotoService;
     }
 
     // Create a new trip and link it to the logged-in user
@@ -51,7 +54,11 @@ public class TripService {
         trip.setStartDate(request.getStartDate());
         trip.setEndDate(request.getEndDate());
         trip.setNumTravelers(request.getNumTravelers());
-        trip.setImageUrl(request.getImageUrl());
+        String imageUrl = placesPhotoService.findPhotoUrl(request.getDestination());
+        if (imageUrl == null || imageUrl.isBlank()) {
+            imageUrl = request.getImageUrl();
+        }
+        trip.setImageUrl(imageUrl);
         trip.setStatus("PLANNING");
         trip.setCreatedAt(LocalDateTime.now());
         trip.setUser(user);
