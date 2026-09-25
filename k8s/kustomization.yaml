@@ -4,4 +4,4 @@ resources:
   - backend.yaml
 images:
   - name: 729231827726.dkr.ecr.us-east-2.amazonaws.com/dev/voyago
-    newTag: backend-6f565330f62df077fb9ccef8251e6d6103b93b32
+    newTag: backend-daeeeaba9d96266b9cdefb6cbc7ff3c081fe1ce7
