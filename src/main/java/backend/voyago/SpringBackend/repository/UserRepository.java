@@ -14,8 +14,24 @@ import backend.voyago.SpringBackend.model.User;
 @Repository
 public interface UserRepository extends JpaRepository<User, Long> {
 
-    Optional<User> findByEmail(String email);
-    boolean existsByEmail(String email);
+    /**
+     * Never use a single-result finder here — duplicate emails exist in older
+     * data and Optional would throw NonUniqueResultException.
+     */
+    @Query("SELECT u FROM User u WHERE LOWER(u.email) = LOWER(:email) ORDER BY u.uid ASC")
+    List<User> findAllByEmailIgnoreCase(@Param("email") String email);
+
+    default Optional<User> findOneByEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return Optional.empty();
+        }
+        List<User> users = findAllByEmailIgnoreCase(email.trim());
+        return users.isEmpty() ? Optional.empty() : Optional.of(users.get(0));
+    }
+
+    default boolean existsByEmailIgnoreCase(String email) {
+        return email != null && !findAllByEmailIgnoreCase(email.trim()).isEmpty();
+    }
 
     Optional<User> findByTagIgnoreCase(String tag);
     boolean existsByTagIgnoreCase(String tag);

@@ -83,7 +83,7 @@ public class InviteService {
             throw new RuntimeException("You are already on this trip");
         }
 
-        Optional<User> existing = userRepository.findByEmail(email);
+        Optional<User> existing = userRepository.findOneByEmail(email);
         if (existing.isPresent()) {
             boolean alreadyMember = memberRepository.findByTripAndUser(trip, existing.get())
                     .filter(m -> TripAccessService.MEMBER_ACCEPTED.equalsIgnoreCase(m.getStatus()))
@@ -116,7 +116,7 @@ public class InviteService {
 
         List<Map<String, Object>> out = new ArrayList<>();
         for (TripInvite invite : inviteRepository.findByTripAndStatus(trip, PENDING)) {
-            out.add(invitePayload(invite, userRepository.existsByEmail(invite.getEmail())));
+            out.add(invitePayload(invite, userRepository.existsByEmailIgnoreCase(invite.getEmail())));
         }
         return out;
     }
@@ -124,7 +124,7 @@ public class InviteService {
     /** In-app inbox: invites waiting for the logged-in user. */
     public List<Map<String, Object>> pendingForUser(String email) {
         List<Map<String, Object>> out = new ArrayList<>();
-        User viewer = userRepository.findByEmail(normalize(email)).orElse(null);
+        User viewer = userRepository.findOneByEmail(normalize(email)).orElse(null);
         for (TripInvite invite : inviteRepository.findByEmailAndStatus(normalize(email), PENDING)) {
             Map<String, Object> payload = invitePreview(invite);
             if (viewer != null) {
@@ -141,7 +141,7 @@ public class InviteService {
         Map<String, Object> payload = invitePreview(invite);
         payload.put("emailMatches", invite.getEmail().equalsIgnoreCase(normalize(viewerEmail)));
         payload.put("viewerEmail", normalize(viewerEmail));
-        userRepository.findByEmail(normalize(viewerEmail)).ifPresent(viewer ->
+        userRepository.findOneByEmail(normalize(viewerEmail)).ifPresent(viewer ->
                 putLimitFields(payload, viewer, invite.getTrip()));
         return payload;
     }
@@ -247,7 +247,7 @@ public class InviteService {
         payload.put("existingUser", existingUser);
         payload.put("inviteUrl", inviteUrl(invite));
         if (existingUser) {
-            userRepository.findByEmail(invite.getEmail()).ifPresent(user -> {
+            userRepository.findOneByEmail(invite.getEmail()).ifPresent(user -> {
                 payload.put("tag", user.getTag());
                 payload.put("name", displayName(user));
                 payload.put("handle", handleOf(user));

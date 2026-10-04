@@ -53,7 +53,7 @@ public class LoginController {
             email = (String) authentication.getPrincipal();
         }
 
-        User user = email != null ? userRepository.findByEmail(email).orElse(null) : null;
+        User user = email != null ? userRepository.findOneByEmail(email).orElse(null) : null;
         String name = user != null && user.getFull_name() != null && !user.getFull_name().isBlank()
                 ? user.getFull_name()
                 : (fallbackName != null && !fallbackName.isBlank() ? fallbackName : email);

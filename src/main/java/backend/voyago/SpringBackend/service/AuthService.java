@@ -30,7 +30,8 @@ public class AuthService {
 
     public String signup(SignupRequest request)
     {
-        Optional<User> existing = userRepository.findByEmail(request.getEmail());
+        String email = request.getEmail() == null ? "" : request.getEmail().trim().toLowerCase();
+        Optional<User> existing = userRepository.findOneByEmail(email);
 
         if (existing.isPresent())
         {
@@ -46,7 +47,7 @@ public class AuthService {
 
         User user = new User();
         user.setFull_name(request.getName());
-        user.setEmail(request.getEmail());
+        user.setEmail(email);
         user.setPassword(hashedPassword);
         user.setProvider("LOCAL");
         userTagService.assign(user);
@@ -56,7 +57,7 @@ public class AuthService {
 
     public String login(LoginRequest request)
     {
-        Optional<User> found = userRepository.findByEmail(request.getEmail());
+        Optional<User> found = userRepository.findOneByEmail(request.getEmail());
         if (found.isEmpty())
         {
             throw new RuntimeException("Invalid credentials");

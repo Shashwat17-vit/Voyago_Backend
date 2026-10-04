@@ -40,7 +40,7 @@ public class TripAccessService {
     }
 
     public User requireUser(String email) {
-        return userRepository.findByEmail(email)
+        return userRepository.findOneByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
     }
 

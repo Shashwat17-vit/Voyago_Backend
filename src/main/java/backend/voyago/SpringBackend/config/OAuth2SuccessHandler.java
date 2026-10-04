@@ -50,8 +50,11 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
                        ? oAuth2User.getAttribute("name")
                        : oAuth2User.getAttribute("login"); // GitHub fallback
         String email = oAuth2User.getAttribute("email");
+        if (email != null) {
+            email = email.trim().toLowerCase();
+        }
 
-        if (email != null && !userRepository.existsByEmail(email))
+        if (email != null && !userRepository.existsByEmailIgnoreCase(email))
         {
             User user = new User();
             user.setFull_name(name);
@@ -60,7 +63,7 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
             user.setProvider(provider);
             userTagService.assign(user);
         } else if (email != null) {
-            userRepository.findByEmail(email)
+            userRepository.findOneByEmail(email)
                     .filter(existing -> existing.getTag() == null || existing.getTag().isBlank())
                     .ifPresent(userTagService::assign);
         }

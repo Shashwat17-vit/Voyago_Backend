@@ -65,7 +65,7 @@ public class TripService {
     // Create a new trip and link it to the logged-in user
     public Trip createTrip(CreateTripRequest request, String email)
     {
-        User user = userRepository.findByEmail(email)
+        User user = userRepository.findOneByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
         tripLimit.assertCanAddTrip(user);
 
@@ -92,7 +92,7 @@ public class TripService {
     // Trips the user owns plus trips they accepted an invite to
     public List<Map<String, Object>> getTripsForUser(String email)
     {
-        User user = userRepository.findByEmail(email)
+        User user = userRepository.findOneByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         Map<Long, Trip> trips = new LinkedHashMap<>();

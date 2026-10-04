@@ -2,9 +2,12 @@ package backend.voyago.SpringBackend.service;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -14,6 +17,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
 import backend.voyago.SpringBackend.model.Trip;
@@ -47,13 +51,13 @@ public class ItineraryService {
         this.restTemplate     = new RestTemplate();
     }
 
+    @Transactional
     public List<TripItineraryDay> generate(Long tripId, String email) {
         Trip trip = access.requireEditable(tripId, email);
 
         TripPreferences prefs = prefsRepository.findByTrip(trip)
                 .orElseThrow(() -> new RuntimeException("Trip preferences not found — save preferences first"));
 
-        // Build request body for Python agent
         Map<String, Object> body = Map.of(
             "trip", Map.of(
                 "destination",   trip.getDestination(),
@@ -71,7 +75,6 @@ public class ItineraryService {
             )
         );
 
-        // Call Python agent — explicit JSON header so FastAPI receives application/json
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
@@ -79,38 +82,38 @@ public class ItineraryService {
         ResponseEntity<Map> response = restTemplate.postForEntity(
                 agentUrl + "/generate-itinerary", request, Map.class);
 
-        Map<String, Object> agentResult = response.getBody();
+        List<ParsedDay> parsed = parseAgentItinerary(response.getBody(), trip);
+        if (parsed.isEmpty()) {
+            throw new RuntimeException("The planner returned an empty itinerary. Your existing calendar was kept.");
+        }
 
-        // Delete previous itinerary for this trip if regenerating
         List<TripItineraryDay> existing = dayRepository.findByTripOrderByDayNumber(trip);
         for (TripItineraryDay old : existing) {
             eventRepository.deleteAll(eventRepository.findByDayOrderByOrderIndex(old));
         }
         dayRepository.deleteAll(existing);
+        dayRepository.flush();
 
-        // Parse and save new itinerary
-        List<Map<String, Object>> days = (List<Map<String, Object>>) agentResult.get("days");
-        for (Map<String, Object> dayData : days) {
+        for (ParsedDay dayData : parsed) {
             TripItineraryDay day = new TripItineraryDay();
             day.setTrip(trip);
-            day.setDayNumber((Integer) dayData.get("dayNumber"));
-            day.setDayLabel((String) dayData.get("dayLabel"));
-            day.setDate(LocalDate.parse((String) dayData.get("date")));
+            day.setDayNumber(dayData.dayNumber);
+            day.setDayLabel(dayData.dayLabel);
+            day.setDate(dayData.date);
             TripItineraryDay savedDay = dayRepository.save(day);
 
-            List<Map<String, Object>> events = (List<Map<String, Object>>) dayData.get("events");
-            for (Map<String, Object> eventData : events) {
+            for (ParsedEvent eventData : dayData.events) {
                 TripEvent event = new TripEvent();
                 event.setDay(savedDay);
-                event.setTitle((String) eventData.get("title"));
-                event.setDescription((String) eventData.get("description"));
-                event.setLocationName((String) eventData.get("locationName"));
-                event.setLatitude(toDouble(eventData.get("latitude")));
-                event.setLongitude(toDouble(eventData.get("longitude")));
-                event.setCategory((String) eventData.get("category"));
-                event.setStartTime(LocalTime.parse((String) eventData.get("startTime")));
-                event.setEndTime(LocalTime.parse((String) eventData.get("endTime")));
-                event.setOrderIndex((Integer) eventData.get("orderIndex"));
+                event.setTitle(eventData.title);
+                event.setDescription(eventData.description);
+                event.setLocationName(eventData.locationName);
+                event.setLatitude(eventData.latitude);
+                event.setLongitude(eventData.longitude);
+                event.setCategory(eventData.category);
+                event.setStartTime(eventData.startTime);
+                event.setEndTime(eventData.endTime);
+                event.setOrderIndex(eventData.orderIndex);
                 eventRepository.save(event);
             }
         }
@@ -238,11 +241,168 @@ public class ItineraryService {
         }
     }
 
-    private Double toDouble(Object val) {
-        if (val == null) return null;
-        if (val instanceof Double) return (Double) val;
-        if (val instanceof Integer) return ((Integer) val).doubleValue();
-        if (val instanceof Number) return ((Number) val).doubleValue();
+    private List<ParsedDay> parseAgentItinerary(Map<String, Object> agentResult, Trip trip) {
+        if (agentResult == null || !(agentResult.get("days") instanceof List<?> rawDays)) {
+            throw new RuntimeException("The planner returned invalid itinerary data. Your existing calendar was kept.");
+        }
+
+        List<ParsedDay> parsed = new ArrayList<>();
+        int fallbackDay = 1;
+        for (Object rawDay : rawDays) {
+            if (!(rawDay instanceof Map<?, ?> dayMap)) {
+                continue;
+            }
+            @SuppressWarnings("unchecked")
+            Map<String, Object> dayData = (Map<String, Object>) dayMap;
+
+            int dayNumber = toInt(dayData.get("dayNumber"), fallbackDay);
+            LocalDate date = parseDate(dayData.get("date"));
+            if (date == null && trip.getStartDate() != null) {
+                date = trip.getStartDate().plusDays(Math.max(0, dayNumber - 1));
+            }
+            if (date == null) {
+                continue;
+            }
+
+            String label = stringify(dayData.get("dayLabel"));
+            if (label.isBlank()) {
+                label = "Day " + dayNumber;
+            }
+
+            List<ParsedEvent> events = new ArrayList<>();
+            Object rawEvents = dayData.get("events");
+            if (rawEvents instanceof List<?> eventList) {
+                int fallbackOrder = 1;
+                for (Object rawEvent : eventList) {
+                    if (!(rawEvent instanceof Map<?, ?> eventMap)) {
+                        continue;
+                    }
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> eventData = (Map<String, Object>) eventMap;
+                    ParsedEvent event = parseEvent(eventData, fallbackOrder);
+                    if (event != null) {
+                        events.add(event);
+                        fallbackOrder = event.orderIndex + 1;
+                    }
+                }
+            }
+            if (events.isEmpty()) {
+                continue;
+            }
+            parsed.add(new ParsedDay(dayNumber, label, date, events));
+            fallbackDay = dayNumber + 1;
+        }
+        return parsed;
+    }
+
+    private ParsedEvent parseEvent(Map<String, Object> eventData, int fallbackOrder) {
+        String title = stringify(eventData.get("title"));
+        if (title.isBlank()) {
+            return null;
+        }
+        LocalTime start = parseTime(eventData.get("startTime"));
+        if (start == null) {
+            return null;
+        }
+        LocalTime end = parseTime(eventData.get("endTime"));
+        if (end == null) {
+            end = start.plusHours(1);
+        }
+        Double[] coords = coords(eventData.get("latitude"), eventData.get("longitude"));
+        return new ParsedEvent(
+                title,
+                stringify(eventData.get("description")),
+                stringify(eventData.get("locationName")),
+                coords[0],
+                coords[1],
+                normalizeCategory(stringify(eventData.get("category"))),
+                start,
+                end,
+                toInt(eventData.get("orderIndex"), fallbackOrder)
+        );
+    }
+
+    private Double[] coords(Object latVal, Object lngVal) {
+        Double lat = toDouble(latVal);
+        Double lng = toDouble(lngVal);
+        if (lat == null || lng == null) {
+            return new Double[] { null, null };
+        }
+        if (Math.abs(lat) < 1e-9 && Math.abs(lng) < 1e-9) {
+            return new Double[] { null, null };
+        }
+        return new Double[] { lat, lng };
+    }
+
+    private int toInt(Object val, int fallback) {
+        if (val instanceof Number number) {
+            return number.intValue();
+        }
+        if (val != null) {
+            try {
+                return Integer.parseInt(val.toString().trim());
+            } catch (NumberFormatException ignored) {
+                // fall through
+            }
+        }
+        return fallback;
+    }
+
+    private LocalDate parseDate(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(raw.toString().trim());
+        } catch (DateTimeParseException e) {
+            return null;
+        }
+    }
+
+    private LocalTime parseTime(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        String value = raw.toString().trim();
+        if (value.isEmpty()) {
+            return null;
+        }
+        value = value.replaceAll("(?i)\\s*(am|pm)$", " $1").replaceAll("\\s+", " ").trim();
+        DateTimeFormatter[] formats = {
+                DateTimeFormatter.ISO_LOCAL_TIME,
+                DateTimeFormatter.ofPattern("H:mm"),
+                DateTimeFormatter.ofPattern("HH:mm"),
+                DateTimeFormatter.ofPattern("H:mm:ss"),
+                DateTimeFormatter.ofPattern("h:mm a", Locale.US),
+                DateTimeFormatter.ofPattern("h:mma", Locale.US)
+        };
+        for (DateTimeFormatter format : formats) {
+            try {
+                return LocalTime.parse(value, format);
+            } catch (DateTimeParseException ignored) {
+                // try the next pattern
+            }
+        }
         return null;
     }
+
+    private String stringify(Object val) {
+        return val == null ? "" : val.toString().trim();
+    }
+
+    private Double toDouble(Object val) {
+        if (val == null) return null;
+        if (val instanceof Number number) return number.doubleValue();
+        try {
+            return Double.parseDouble(val.toString().trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private record ParsedDay(int dayNumber, String dayLabel, LocalDate date, List<ParsedEvent> events) {}
+
+    private record ParsedEvent(String title, String description, String locationName,
+                               Double latitude, Double longitude, String category,
+                               LocalTime startTime, LocalTime endTime, int orderIndex) {}
 }
