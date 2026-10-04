@@ -11,12 +11,15 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import backend.voyago.SpringBackend.config.JwtUtil;
 import backend.voyago.SpringBackend.dto.LoginRequest;
 import backend.voyago.SpringBackend.model.User;
 import backend.voyago.SpringBackend.repository.UserRepository;
 import backend.voyago.SpringBackend.service.AuthService;
+import backend.voyago.SpringBackend.service.TokenRevocationService;
 import backend.voyago.SpringBackend.service.TripLimitService;
 import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 @RestController
@@ -26,13 +29,18 @@ public class LoginController {
     private final AuthService authService;
     private final UserRepository userRepository;
     private final TripLimitService tripLimitService;
+    private final JwtUtil jwtUtil;
+    private final TokenRevocationService revocation;
 
     public LoginController(AuthService authService, UserRepository userRepository,
-                           TripLimitService tripLimitService)
+                           TripLimitService tripLimitService, JwtUtil jwtUtil,
+                           TokenRevocationService revocation)
     {
         this.authService = authService;
         this.userRepository = userRepository;
         this.tripLimitService = tripLimitService;
+        this.jwtUtil = jwtUtil;
+        this.revocation = revocation;
     }
 
     @GetMapping("/me")
@@ -74,12 +82,13 @@ public class LoginController {
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<Void> logout(HttpServletResponse response) {
+    public ResponseEntity<Void> logout(HttpServletRequest request, HttpServletResponse response) {
+        revocation.revoke(jwtUtil.resolveToken(request));
         Cookie cookie = new Cookie("jwt", "");
         cookie.setHttpOnly(true);
         cookie.setSecure(true);
         cookie.setPath("/");
-        cookie.setMaxAge(0); // immediately expire
+        cookie.setMaxAge(0);
         response.addCookie(cookie);
         return ResponseEntity.ok().build();
     }

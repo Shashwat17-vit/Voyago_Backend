@@ -8,9 +8,9 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import backend.voyago.SpringBackend.service.TokenRevocationService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -18,25 +18,20 @@ import jakarta.servlet.http.HttpServletResponse;
 public class JwtFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
+    private final TokenRevocationService revocation;
 
-    public JwtFilter(JwtUtil jwtUtil)
-    {
+    public JwtFilter(JwtUtil jwtUtil, TokenRevocationService revocation) {
         this.jwtUtil = jwtUtil;
+        this.revocation = revocation;
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
-                                    FilterChain filterChain) throws ServletException, IOException
-    {
-        // Check cookie first, then fall back to Authorization header
-        String token = extractTokenFromCookies(request);
-        if (token == null) {
-            token = extractTokenFromHeader(request);
-        }
+                                    FilterChain filterChain) throws ServletException, IOException {
+        String token = jwtUtil.resolveToken(request);
 
-        if (token != null && jwtUtil.isTokenValid(token))
-        {
+        if (token != null && jwtUtil.isTokenValid(token) && !revocation.isRevoked(token)) {
             String email = jwtUtil.extractEmail(token);
             UsernamePasswordAuthenticationToken auth =
                 new UsernamePasswordAuthenticationToken(email, null, List.of());
@@ -44,25 +39,5 @@ public class JwtFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
-    }
-
-    private String extractTokenFromCookies(HttpServletRequest request)
-    {
-        if (request.getCookies() == null) return null;
-        for (Cookie cookie : request.getCookies())
-        {
-            if ("jwt".equals(cookie.getName())) return cookie.getValue();
-        }
-        return null;
-    }
-
-    private String extractTokenFromHeader(HttpServletRequest request)
-    {
-        String header = request.getHeader("Authorization");
-        if (header != null && header.startsWith("Bearer "))
-        {
-            return header.substring(7);
-        }
-        return null;
     }
 }
