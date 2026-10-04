@@ -13,12 +13,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import org.springframework.security.oauth2.core.user.OAuth2User;
-
 import backend.voyago.SpringBackend.dto.CreateTripPreference;
 import backend.voyago.SpringBackend.dto.CreateTripRequest;
+import backend.voyago.SpringBackend.exception.ForbiddenException;
 import backend.voyago.SpringBackend.model.Trip;
 import backend.voyago.SpringBackend.model.TripPreferences;
+import backend.voyago.SpringBackend.service.InviteService;
 import backend.voyago.SpringBackend.service.TripService;
 
 @RestController
@@ -26,10 +26,12 @@ import backend.voyago.SpringBackend.service.TripService;
 public class NewTripController {
 
     private final TripService tripService;
+    private final InviteService inviteService;
 
-    public NewTripController(TripService tripService)
+    public NewTripController(TripService tripService, InviteService inviteService)
     {
         this.tripService = tripService;
+        this.inviteService = inviteService;
     }
 
     // POST /api/trips — create a new trip for the logged-in user
@@ -39,7 +41,7 @@ public class NewTripController {
             Authentication authentication)
     {
         try {
-            String email = extractEmail(authentication);
+            String email = CurrentUser.email(authentication);
             Trip trip = tripService.createTrip(request, email);
             return ResponseEntity.ok(Map.of("message", "Trip created", "tid", trip.getTid()));
         } catch (RuntimeException e) {
@@ -47,36 +49,39 @@ public class NewTripController {
         }
     }
 
-    // GET /api/trips/{id} — get single trip
+    // GET /api/trips/{id} — trip plus the caller's role on it
     @GetMapping("/{tripId}")
-    public ResponseEntity<?> getTrip(@PathVariable Long tripId) {
+    public ResponseEntity<?> getTrip(@PathVariable Long tripId, Authentication authentication) {
         try {
-            Trip trip = tripService.getTripById(tripId);
-            return ResponseEntity.ok(trip);
+            return ResponseEntity.ok(tripService.getTripForUser(tripId, CurrentUser.email(authentication)));
+        } catch (ForbiddenException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 
-    // GET /api/trips — get all trips for the logged-in user
+    // GET /api/trips — trips the user owns or has joined
     @GetMapping
-    public ResponseEntity<List<Trip>> getTrips(Authentication authentication)
+    public ResponseEntity<?> getTrips(Authentication authentication)
     {
         try {
-            String email = extractEmail(authentication);
-            List<Trip> trips = tripService.getTripsForUser(email);
-            return ResponseEntity.ok(trips);
+            String email = CurrentUser.email(authentication);
+            return ResponseEntity.ok(tripService.getTripsForUser(email));
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 
-    // DELETE /api/trips/{tripId} — delete a trip and all its data
+    // DELETE /api/trips/{tripId} — admin only
     @DeleteMapping("/{tripId}")
-    public ResponseEntity<Map<String, String>> deleteTrip(@PathVariable Long tripId) {
+    public ResponseEntity<Map<String, String>> deleteTrip(@PathVariable Long tripId,
+                                                          Authentication authentication) {
         try {
-            tripService.deleteTrip(tripId);
+            tripService.deleteTrip(tripId, CurrentUser.email(authentication));
             return ResponseEntity.ok(Map.of("message", "Trip deleted"));
+        } catch (ForbiddenException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
@@ -86,24 +91,81 @@ public class NewTripController {
     @PostMapping("/{tripId}/preferences")
     public ResponseEntity<Map<String, Object>> savePreferences(
             @PathVariable Long tripId,
-            @RequestBody CreateTripPreference request)
+            @RequestBody CreateTripPreference request,
+            Authentication authentication)
     {
         try {
-            TripPreferences prefs = tripService.savePreferences(tripId, request);
+            TripPreferences prefs = tripService.savePreferences(tripId, request, CurrentUser.email(authentication));
             return ResponseEntity.ok(Map.of("message", "Preferences saved", "prefId", prefs.getPrefId()));
+        } catch (ForbiddenException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 
-    // JWT login sets principal as a String (email)
-    // OAuth2 login sets principal as an OAuth2User object — need to extract email from attributes
-    private String extractEmail(Authentication authentication)
-    {
-        if (authentication.getPrincipal() instanceof OAuth2User oAuth2User)
-        {
-            return oAuth2User.getAttribute("email");
+    // POST /api/trips/{tripId}/confirm — admin locks the itinerary
+    @PostMapping("/{tripId}/confirm")
+    public ResponseEntity<?> confirm(@PathVariable Long tripId, Authentication authentication) {
+        return setConfirmed(tripId, authentication, true);
+    }
+
+    // POST /api/trips/{tripId}/unconfirm — admin reopens the trip for editing
+    @PostMapping("/{tripId}/unconfirm")
+    public ResponseEntity<?> unconfirm(@PathVariable Long tripId, Authentication authentication) {
+        return setConfirmed(tripId, authentication, false);
+    }
+
+    // GET /api/trips/{tripId}/members — accepted members of the trip
+    @GetMapping("/{tripId}/members")
+    public ResponseEntity<?> members(@PathVariable Long tripId, Authentication authentication) {
+        try {
+            return ResponseEntity.ok(inviteService.members(tripId, CurrentUser.email(authentication)));
+        } catch (ForbiddenException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
-        return (String) authentication.getPrincipal();
+    }
+
+    // GET /api/trips/{tripId}/invites — pending invites (admin only)
+    @GetMapping("/{tripId}/invites")
+    public ResponseEntity<?> listInvites(@PathVariable Long tripId, Authentication authentication) {
+        try {
+            List<Map<String, Object>> invites =
+                    inviteService.pendingForTrip(tripId, CurrentUser.email(authentication));
+            return ResponseEntity.ok(invites);
+        } catch (ForbiddenException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // POST /api/trips/{tripId}/invites — admin invites an email address
+    @PostMapping("/{tripId}/invites")
+    public ResponseEntity<?> invite(@PathVariable Long tripId,
+                                    @RequestBody Map<String, String> body,
+                                    Authentication authentication) {
+        try {
+            Map<String, Object> invite = inviteService.invite(
+                    tripId, body.get("email"), CurrentUser.email(authentication));
+            return ResponseEntity.ok(invite);
+        } catch (ForbiddenException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    private ResponseEntity<?> setConfirmed(Long tripId, Authentication authentication, boolean confirmed) {
+        try {
+            return ResponseEntity.ok(
+                    tripService.setConfirmed(tripId, CurrentUser.email(authentication), confirmed));
+        } catch (ForbiddenException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 }

@@ -1,18 +1,26 @@
 package backend.voyago.SpringBackend.service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import backend.voyago.SpringBackend.dto.CreateTripRequest;
 import backend.voyago.SpringBackend.dto.CreateTripPreference;
 import backend.voyago.SpringBackend.model.Trip;
 import backend.voyago.SpringBackend.model.TripItineraryDay;
+import backend.voyago.SpringBackend.model.TripMember;
 import backend.voyago.SpringBackend.model.TripPreferences;
 import backend.voyago.SpringBackend.model.User;
 import backend.voyago.SpringBackend.repository.TripEventRepository;
+import backend.voyago.SpringBackend.repository.TripInviteRepository;
 import backend.voyago.SpringBackend.repository.TripItineraryDayRepository;
+import backend.voyago.SpringBackend.repository.TripMemberRepository;
 import backend.voyago.SpringBackend.repository.TripRepository;
 import backend.voyago.SpringBackend.repository.TripRepositoryPerference;
 import backend.voyago.SpringBackend.repository.UserRepository;
@@ -25,21 +33,30 @@ public class TripService {
     private final TripItineraryDayRepository dayRepository;
     private final TripEventRepository eventRepository;
     private final UserRepository userRepository;
+    private final TripMemberRepository memberRepository;
+    private final TripInviteRepository inviteRepository;
     private final PlacesPhotoService placesPhotoService;
+    private final TripAccessService access;
 
     public TripService(TripRepository tripRepository,
                        TripRepositoryPerference tripPreferencesRepository,
                        TripItineraryDayRepository dayRepository,
                        TripEventRepository eventRepository,
                        UserRepository userRepository,
-                       PlacesPhotoService placesPhotoService)
+                       TripMemberRepository memberRepository,
+                       TripInviteRepository inviteRepository,
+                       PlacesPhotoService placesPhotoService,
+                       TripAccessService access)
     {
         this.tripRepository = tripRepository;
         this.tripPreferencesRepository = tripPreferencesRepository;
         this.dayRepository = dayRepository;
         this.eventRepository = eventRepository;
         this.userRepository = userRepository;
+        this.memberRepository = memberRepository;
+        this.inviteRepository = inviteRepository;
         this.placesPhotoService = placesPhotoService;
+        this.access = access;
     }
 
     // Create a new trip and link it to the logged-in user
@@ -59,20 +76,35 @@ public class TripService {
             imageUrl = request.getImageUrl();
         }
         trip.setImageUrl(imageUrl);
-        trip.setStatus("PLANNING");
+        trip.setStatus(TripAccessService.STATUS_PLANNING);
         trip.setCreatedAt(LocalDateTime.now());
         trip.setUser(user);
 
-        return tripRepository.save(trip);
+        Trip saved = tripRepository.save(trip);
+        access.ensureAdminMembership(saved);
+        return saved;
     }
 
-    // Get all trips for the logged-in user
-    public List<Trip> getTripsForUser(String email)
+    // Trips the user owns plus trips they accepted an invite to
+    public List<Map<String, Object>> getTripsForUser(String email)
     {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        return tripRepository.findByUser(user);
+        Map<Long, Trip> trips = new LinkedHashMap<>();
+        for (Trip owned : tripRepository.findByUser(user)) {
+            trips.put(owned.getTid(), owned);
+        }
+        for (TripMember member : memberRepository.findByUserAndStatus(user, TripAccessService.MEMBER_ACCEPTED)) {
+            Trip trip = member.getTrip();
+            trips.putIfAbsent(trip.getTid(), trip);
+        }
+
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Trip trip : trips.values()) {
+            out.add(toPayload(trip, user));
+        }
+        return out;
     }
 
     public Trip getTripById(Long tripId) {
@@ -80,27 +112,42 @@ public class TripService {
                 .orElseThrow(() -> new RuntimeException("Trip not found"));
     }
 
-    // Delete a trip and all its dependent data
-    public void deleteTrip(Long tripId)
-    {
-        Trip trip = tripRepository.findById(tripId)
-                .orElseThrow(() -> new RuntimeException("Trip not found"));
+    /** Trip plus the caller's role, so the UI knows what to lock. */
+    public Map<String, Object> getTripForUser(Long tripId, String email) {
+        Trip trip = access.requireMember(tripId, email);
+        access.ensureAdminMembership(trip);
+        return toPayload(trip, access.requireUser(email));
+    }
 
-        // 1. delete events → days → preferences → trip (in FK order)
+    public Map<String, Object> setConfirmed(Long tripId, String email, boolean confirmed) {
+        Trip trip = access.requireAdmin(tripId, email);
+        trip.setStatus(confirmed ? TripAccessService.STATUS_CONFIRMED : TripAccessService.STATUS_PLANNING);
+        Trip saved = tripRepository.save(trip);
+        return toPayload(saved, access.requireUser(email));
+    }
+
+    // Delete a trip and all its dependent data
+    @Transactional
+    public void deleteTrip(Long tripId, String email)
+    {
+        Trip trip = access.requireAdmin(tripId, email);
+
+        // 1. delete events → days → preferences → members/invites → trip (in FK order)
         List<TripItineraryDay> days = dayRepository.findByTripOrderByDayNumber(trip);
         for (TripItineraryDay day : days) {
             eventRepository.deleteAll(eventRepository.findByDayOrderByOrderIndex(day));
         }
         dayRepository.deleteAll(days);
         tripPreferencesRepository.findByTrip(trip).ifPresent(tripPreferencesRepository::delete);
+        inviteRepository.deleteAll(inviteRepository.findByTrip(trip));
+        memberRepository.deleteAll(memberRepository.findByTrip(trip));
         tripRepository.delete(trip);
     }
 
     // Save (or update) preferences for an existing trip
-    public TripPreferences savePreferences(Long tripId, CreateTripPreference request)
+    public TripPreferences savePreferences(Long tripId, CreateTripPreference request, String email)
     {
-        Trip trip = tripRepository.findById(tripId)
-                .orElseThrow(() -> new RuntimeException("Trip not found"));
+        Trip trip = access.requireEditable(tripId, email);
 
         // Upsert: update existing row if present, otherwise create new
         TripPreferences prefs = tripPreferencesRepository.findByTrip(trip)
@@ -115,5 +162,27 @@ public class TripService {
         prefs.setNotes(request.getNotes());
 
         return tripPreferencesRepository.save(prefs);
+    }
+
+    private Map<String, Object> toPayload(Trip trip, User viewer) {
+        String role = access.roleFor(trip, viewer);
+        boolean isAdmin = TripAccessService.ROLE_ADMIN.equals(role);
+        boolean confirmed = access.isConfirmed(trip);
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("tid", trip.getTid());
+        payload.put("title", trip.getTitle());
+        payload.put("destination", trip.getDestination());
+        payload.put("startDate", trip.getStartDate() != null ? trip.getStartDate().toString() : null);
+        payload.put("endDate", trip.getEndDate() != null ? trip.getEndDate().toString() : null);
+        payload.put("numTravelers", trip.getNumTravelers());
+        payload.put("imageUrl", trip.getImageUrl());
+        payload.put("status", confirmed ? TripAccessService.STATUS_CONFIRMED : TripAccessService.STATUS_PLANNING);
+        payload.put("createdAt", trip.getCreatedAt() != null ? trip.getCreatedAt().toString() : null);
+        payload.put("role", role);
+        payload.put("isAdmin", isAdmin);
+        payload.put("confirmed", confirmed);
+        payload.put("canEdit", role != null && !confirmed);
+        return payload;
     }
 }

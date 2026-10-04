@@ -22,35 +22,33 @@ import backend.voyago.SpringBackend.model.TripItineraryDay;
 import backend.voyago.SpringBackend.model.TripPreferences;
 import backend.voyago.SpringBackend.repository.TripEventRepository;
 import backend.voyago.SpringBackend.repository.TripItineraryDayRepository;
-import backend.voyago.SpringBackend.repository.TripRepository;
 import backend.voyago.SpringBackend.repository.TripRepositoryPerference;
 
 @Service
 public class ItineraryService {
 
-    private final TripRepository tripRepository;
     private final TripRepositoryPerference prefsRepository;
     private final TripItineraryDayRepository dayRepository;
     private final TripEventRepository eventRepository;
+    private final TripAccessService access;
     private final RestTemplate restTemplate;
 
     @Value("${agent.url:http://localhost:8000}")
     private String agentUrl;
 
-    public ItineraryService(TripRepository tripRepository,
-                            TripRepositoryPerference prefsRepository,
+    public ItineraryService(TripRepositoryPerference prefsRepository,
                             TripItineraryDayRepository dayRepository,
-                            TripEventRepository eventRepository) {
-        this.tripRepository   = tripRepository;
+                            TripEventRepository eventRepository,
+                            TripAccessService access) {
         this.prefsRepository  = prefsRepository;
         this.dayRepository    = dayRepository;
         this.eventRepository  = eventRepository;
+        this.access           = access;
         this.restTemplate     = new RestTemplate();
     }
 
-    public List<TripItineraryDay> generate(Long tripId) {
-        Trip trip = tripRepository.findById(tripId)
-                .orElseThrow(() -> new RuntimeException("Trip not found"));
+    public List<TripItineraryDay> generate(Long tripId, String email) {
+        Trip trip = access.requireEditable(tripId, email);
 
         TripPreferences prefs = prefsRepository.findByTrip(trip)
                 .orElseThrow(() -> new RuntimeException("Trip preferences not found — save preferences first"));
@@ -120,9 +118,8 @@ public class ItineraryService {
         return dayRepository.findByTripOrderByDayNumber(trip);
     }
 
-    public List<Map<String, Object>> getItinerary(Long tripId) {
-        Trip trip = tripRepository.findById(tripId)
-                .orElseThrow(() -> new RuntimeException("Trip not found"));
+    public List<Map<String, Object>> getItinerary(Long tripId, String email) {
+        Trip trip = access.requireMember(tripId, email);
 
         return dayRepository.findByTripOrderByDayNumber(trip).stream().map(day -> {
             List<Map<String, Object>> events = eventRepository
@@ -151,9 +148,10 @@ public class ItineraryService {
         }).collect(Collectors.toList());
     }
 
-    public Map<String, Object> createEvent(Long dayId, Map<String, Object> body) {
+    public Map<String, Object> createEvent(Long dayId, Map<String, Object> body, String email) {
         TripItineraryDay day = dayRepository.findById(dayId)
                 .orElseThrow(() -> new RuntimeException("Day not found"));
+        access.requireEditable(day.getTrip(), email);
         TripEvent event = new TripEvent();
         event.setDay(day);
         event.setTitle((String) body.getOrDefault("title", "New Event"));
@@ -177,9 +175,10 @@ public class ItineraryService {
         return ev;
     }
 
-    public void updateEvent(Long eventId, Map<String, Object> body) {
+    public void updateEvent(Long eventId, Map<String, Object> body, String email) {
         TripEvent event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new RuntimeException("Event not found"));
+        access.requireEditable(event.getDay().getTrip(), email);
         if (body.containsKey("title"))        event.setTitle((String) body.get("title"));
         if (body.containsKey("description"))  event.setDescription((String) body.get("description"));
         if (body.containsKey("locationName")) event.setLocationName((String) body.get("locationName"));
@@ -189,13 +188,17 @@ public class ItineraryService {
         eventRepository.save(event);
     }
 
-    public void deleteEvent(Long eventId) {
-        eventRepository.deleteById(eventId);
+    public void deleteEvent(Long eventId, String email) {
+        TripEvent event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new RuntimeException("Event not found"));
+        access.requireEditable(event.getDay().getTrip(), email);
+        eventRepository.delete(event);
     }
 
-    public Map<String, Object> duplicateEvent(Long eventId) {
+    public Map<String, Object> duplicateEvent(Long eventId, String email) {
         TripEvent orig = eventRepository.findById(eventId)
                 .orElseThrow(() -> new RuntimeException("Event not found"));
+        access.requireEditable(orig.getDay().getTrip(), email);
         TripEvent copy = new TripEvent();
         copy.setDay(orig.getDay());
         copy.setTitle(orig.getTitle() + " (Copy)");
