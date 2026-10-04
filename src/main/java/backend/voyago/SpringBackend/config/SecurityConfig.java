@@ -1,7 +1,10 @@
 package backend.voyago.SpringBackend.config;
 
-import java.util.Arrays;
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -59,17 +62,59 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        List<String> origins = Arrays.stream(allowedOriginsCsv.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .toList();
-        config.setAllowedOrigins(origins);
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        config.setAllowedOrigins(resolvedOrigins());
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
         return source;
+    }
+
+    /**
+     * Exact-origin CORS. Also allows the www/apex twin so https://voyago.dev
+     * and https://www.voyago.dev both work when only one is configured.
+     */
+    private List<String> resolvedOrigins() {
+        Set<String> origins = new LinkedHashSet<>();
+        addOriginAndVariants(origins, allowedOriginsCsv);
+        addOriginAndVariants(origins, frontendUrl);
+        if (origins.isEmpty()) {
+            origins.add("http://localhost:5173");
+        }
+        return new ArrayList<>(origins);
+    }
+
+    private void addOriginAndVariants(Set<String> out, String csv) {
+        if (csv == null || csv.isBlank()) {
+            return;
+        }
+        for (String raw : csv.split(",")) {
+            String origin = stripTrailingSlash(raw.trim());
+            if (origin.isEmpty()) {
+                continue;
+            }
+            out.add(origin);
+            URI uri = URI.create(origin);
+            String host = uri.getHost();
+            String scheme = uri.getScheme();
+            if (host == null || scheme == null) {
+                continue;
+            }
+            String port = uri.getPort() > 0 ? ":" + uri.getPort() : "";
+            if (host.startsWith("www.")) {
+                out.add(scheme + "://" + host.substring(4) + port);
+            } else {
+                out.add(scheme + "://www." + host + port);
+            }
+        }
+    }
+
+    private static String stripTrailingSlash(String value) {
+        if (value.endsWith("/")) {
+            return value.substring(0, value.length() - 1);
+        }
+        return value;
     }
 
     @Bean
