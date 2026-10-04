@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 
 import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +21,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.RestTemplate;
 
 import backend.voyago.SpringBackend.model.Trip;
@@ -27,7 +29,6 @@ import backend.voyago.SpringBackend.model.TripMember;
 import backend.voyago.SpringBackend.model.User;
 import backend.voyago.SpringBackend.repository.TripMemberRepository;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
 
 /**
  * Voyago owns membership. Stream hosts the room. This service only mints a
@@ -107,9 +108,6 @@ public class StreamChatService {
             Map<String, Object> payload = new HashMap<>();
             payload.put("id", streamUserId(user));
             payload.put("name", displayName(user));
-            if (user.getTag() != null && !user.getTag().isBlank()) {
-                payload.put("username", user.getTag());
-            }
             users.put(streamUserId(user), payload);
         }
         post("/users", Map.of("users", users));
@@ -154,6 +152,9 @@ public class StreamChatService {
         String url = STREAM_URL + path + "?api_key=" + apiKey;
         try {
             restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(body, headers), Map.class);
+        } catch (RestClientResponseException e) {
+            log.warn("Stream request {} failed: {} {}", path, e.getStatusCode(), e.getResponseBodyAsString());
+            throw new RuntimeException("Stream Chat rejected the request (" + e.getStatusCode().value() + ")");
         } catch (RestClientException e) {
             log.warn("Stream request {} failed: {}", path, e.getMessage());
             throw new RuntimeException("Could not reach Stream Chat");
@@ -166,7 +167,7 @@ public class StreamChatService {
                 .claim("user_id", userId)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusSeconds(60L * 60L * 24L)))
-                .signWith(signingKey())
+                .signWith(signingKey(), Jwts.SIG.HS256)
                 .compact();
     }
 
@@ -174,16 +175,17 @@ public class StreamChatService {
         return Jwts.builder()
                 .claim("server", true)
                 .issuedAt(new Date())
-                .signWith(signingKey())
+                .signWith(signingKey(), Jwts.SIG.HS256)
                 .compact();
     }
 
+    /** Stream only accepts HS256. A long secret would otherwise be signed as HS512 and return 401. */
     private SecretKey signingKey() {
         byte[] bytes = apiSecret.getBytes(StandardCharsets.UTF_8);
         if (bytes.length < 32) {
             throw new IllegalStateException("STREAM_API_SECRET is too short");
         }
-        return Keys.hmacShaKeyFor(bytes);
+        return new SecretKeySpec(bytes, "HmacSHA256");
     }
 
     static String streamUserId(User user) {
