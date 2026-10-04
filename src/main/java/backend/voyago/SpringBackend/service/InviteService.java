@@ -34,6 +34,7 @@ public class InviteService {
     private final TripMemberRepository memberRepository;
     private final UserRepository userRepository;
     private final TripAccessService access;
+    private final TripLimitService tripLimit;
 
     @Value("${app.frontend-url:http://localhost:5173}")
     private String frontendUrl;
@@ -41,11 +42,13 @@ public class InviteService {
     public InviteService(TripInviteRepository inviteRepository,
                          TripMemberRepository memberRepository,
                          UserRepository userRepository,
-                         TripAccessService access) {
+                         TripAccessService access,
+                         TripLimitService tripLimit) {
         this.inviteRepository = inviteRepository;
         this.memberRepository = memberRepository;
         this.userRepository = userRepository;
         this.access = access;
+        this.tripLimit = tripLimit;
     }
 
     /**
@@ -121,8 +124,13 @@ public class InviteService {
     /** In-app inbox: invites waiting for the logged-in user. */
     public List<Map<String, Object>> pendingForUser(String email) {
         List<Map<String, Object>> out = new ArrayList<>();
+        User viewer = userRepository.findByEmail(normalize(email)).orElse(null);
         for (TripInvite invite : inviteRepository.findByEmailAndStatus(normalize(email), PENDING)) {
-            out.add(invitePreview(invite));
+            Map<String, Object> payload = invitePreview(invite);
+            if (viewer != null) {
+                putLimitFields(payload, viewer, invite.getTrip());
+            }
+            out.add(payload);
         }
         return out;
     }
@@ -133,6 +141,8 @@ public class InviteService {
         Map<String, Object> payload = invitePreview(invite);
         payload.put("emailMatches", invite.getEmail().equalsIgnoreCase(normalize(viewerEmail)));
         payload.put("viewerEmail", normalize(viewerEmail));
+        userRepository.findByEmail(normalize(viewerEmail)).ifPresent(viewer ->
+                putLimitFields(payload, viewer, invite.getTrip()));
         return payload;
     }
 
@@ -143,6 +153,9 @@ public class InviteService {
 
         Trip trip = invite.getTrip();
         User user = access.requireUser(normalize(viewerEmail));
+        if (!tripLimit.alreadyOnTrip(user, trip)) {
+            tripLimit.assertCanAddTrip(user);
+        }
 
         TripMember member = memberRepository.findByTripAndUser(trip, user).orElseGet(TripMember::new);
         member.setTrip(trip);
@@ -262,6 +275,18 @@ public class InviteService {
                 : "");
         payload.put("inviteUrl", inviteUrl(invite));
         return payload;
+    }
+
+    private void putLimitFields(Map<String, Object> payload, User viewer, Trip trip) {
+        int count = tripLimit.countFor(viewer);
+        boolean alreadyOn = tripLimit.alreadyOnTrip(viewer, trip);
+        boolean canAccept = alreadyOn || count < TripLimitService.MAX_TRIPS;
+        payload.put("tripCount", count);
+        payload.put("tripLimit", TripLimitService.MAX_TRIPS);
+        payload.put("canAccept", canAccept);
+        if (!canAccept) {
+            payload.put("limitMessage", TripLimitService.LIMIT_MESSAGE);
+        }
     }
 
     private String inviteUrl(TripInvite invite) {

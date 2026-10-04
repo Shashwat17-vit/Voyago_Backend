@@ -37,6 +37,7 @@ public class TripService {
     private final TripInviteRepository inviteRepository;
     private final PlacesPhotoService placesPhotoService;
     private final TripAccessService access;
+    private final TripLimitService tripLimit;
 
     public TripService(TripRepository tripRepository,
                        TripRepositoryPerference tripPreferencesRepository,
@@ -46,7 +47,8 @@ public class TripService {
                        TripMemberRepository memberRepository,
                        TripInviteRepository inviteRepository,
                        PlacesPhotoService placesPhotoService,
-                       TripAccessService access)
+                       TripAccessService access,
+                       TripLimitService tripLimit)
     {
         this.tripRepository = tripRepository;
         this.tripPreferencesRepository = tripPreferencesRepository;
@@ -57,6 +59,7 @@ public class TripService {
         this.inviteRepository = inviteRepository;
         this.placesPhotoService = placesPhotoService;
         this.access = access;
+        this.tripLimit = tripLimit;
     }
 
     // Create a new trip and link it to the logged-in user
@@ -64,6 +67,7 @@ public class TripService {
     {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
+        tripLimit.assertCanAddTrip(user);
 
         Trip trip = new Trip();
         trip.setTitle(request.getTitle());

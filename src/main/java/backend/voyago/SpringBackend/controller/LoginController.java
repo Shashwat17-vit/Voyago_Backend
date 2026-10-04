@@ -15,6 +15,7 @@ import backend.voyago.SpringBackend.dto.LoginRequest;
 import backend.voyago.SpringBackend.model.User;
 import backend.voyago.SpringBackend.repository.UserRepository;
 import backend.voyago.SpringBackend.service.AuthService;
+import backend.voyago.SpringBackend.service.TripLimitService;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -24,11 +25,14 @@ public class LoginController {
 
     private final AuthService authService;
     private final UserRepository userRepository;
+    private final TripLimitService tripLimitService;
 
-    public LoginController(AuthService authService, UserRepository userRepository)
+    public LoginController(AuthService authService, UserRepository userRepository,
+                           TripLimitService tripLimitService)
     {
         this.authService = authService;
         this.userRepository = userRepository;
+        this.tripLimitService = tripLimitService;
     }
 
     @GetMapping("/me")
@@ -60,6 +64,12 @@ public class LoginController {
         body.put("name", name != null ? name : "");
         body.put("tag", tag);
         body.put("handle", tag == null || tag.isBlank() ? "" : "#" + tag);
+        if (user != null) {
+            int tripCount = tripLimitService.countFor(user);
+            body.put("tripCount", tripCount);
+            body.put("tripLimit", TripLimitService.MAX_TRIPS);
+            body.put("canAddTrip", tripCount < TripLimitService.MAX_TRIPS);
+        }
         return ResponseEntity.ok(body);
     }
 
