@@ -39,21 +39,27 @@ public class LoginController {
             return ResponseEntity.status(401).build();
         }
 
-        // OAuth2 login — principal is an OAuth2User with name/email attributes
-        if (authentication.getPrincipal() instanceof OAuth2User oAuth2User)
-        {
-            return ResponseEntity.ok(Map.of(
-                "name",  oAuth2User.getAttribute("name")  != null ? oAuth2User.getAttribute("name")  : "",
-                "email", oAuth2User.getAttribute("email") != null ? oAuth2User.getAttribute("email") : ""
-            ));
+        String email;
+        String fallbackName = "";
+        if (authentication.getPrincipal() instanceof OAuth2User oAuth2User) {
+            email = oAuth2User.getAttribute("email");
+            fallbackName = oAuth2User.getAttribute("name") != null
+                    ? oAuth2User.getAttribute("name") : "";
+        } else {
+            email = (String) authentication.getPrincipal();
         }
 
-        // JWT login — principal is the email string set by JwtFilter
-        String email = (String) authentication.getPrincipal();
-        String name = userRepository.findByEmail(email)
-                .map(User::getFull_name)
-                .orElse(email);
-        return ResponseEntity.ok(Map.of("email", email, "name", name != null ? name : email));
+        User user = email != null ? userRepository.findByEmail(email).orElse(null) : null;
+        String name = user != null && user.getFull_name() != null && !user.getFull_name().isBlank()
+                ? user.getFull_name()
+                : (fallbackName != null && !fallbackName.isBlank() ? fallbackName : email);
+        String tag = user != null ? user.getTag() : null;
+        Map<String, Object> body = new java.util.HashMap<>();
+        body.put("email", email != null ? email : "");
+        body.put("name", name != null ? name : "");
+        body.put("tag", tag);
+        body.put("handle", tag == null || tag.isBlank() ? "" : "#" + tag);
+        return ResponseEntity.ok(body);
     }
 
     @PostMapping("/logout")

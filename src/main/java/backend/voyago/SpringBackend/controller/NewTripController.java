@@ -149,7 +149,7 @@ public class NewTripController {
                                     Authentication authentication) {
         try {
             Map<String, Object> invite = inviteService.invite(
-                    tripId, body.get("email"), CurrentUser.email(authentication));
+                    tripId, body.get("email"), body.get("tag"), CurrentUser.email(authentication));
             return ResponseEntity.ok(invite);
         } catch (ForbiddenException e) {
             return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));

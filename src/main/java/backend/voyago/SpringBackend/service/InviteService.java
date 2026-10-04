@@ -49,6 +49,18 @@ public class InviteService {
     }
 
     /**
+     * Admin invite from either a handle ({@code tag}) or an email. Tag is resolved
+     * to that user's email so the rest of the invite path stays unchanged.
+     */
+    public Map<String, Object> invite(Long tripId, String rawEmail, String rawTag, String inviterEmail) {
+        String email = rawEmail;
+        if (email == null || email.isBlank()) {
+            email = resolveTag(rawTag);
+        }
+        return invite(tripId, email, inviterEmail);
+    }
+
+    /**
      * Admin invites an email address. Invites stay allowed while the trip is CONFIRMED —
      * joining a trip is not the same as editing its itinerary.
      */
@@ -180,6 +192,8 @@ public class InviteService {
             entry.put("name", user.getFull_name() != null && !user.getFull_name().isBlank()
                     ? user.getFull_name() : user.getEmail());
             entry.put("email", user.getEmail());
+            entry.put("tag", user.getTag());
+            entry.put("handle", handleOf(user));
             entry.put("role", member.getRole());
             entry.put("isAdmin", TripAccessService.ROLE_ADMIN.equals(member.getRole()));
             out.add(entry);
@@ -219,6 +233,13 @@ public class InviteService {
         payload.put("status", invite.getStatus());
         payload.put("existingUser", existingUser);
         payload.put("inviteUrl", inviteUrl(invite));
+        if (existingUser) {
+            userRepository.findByEmail(invite.getEmail()).ifPresent(user -> {
+                payload.put("tag", user.getTag());
+                payload.put("name", displayName(user));
+                payload.put("handle", handleOf(user));
+            });
+        }
         return payload;
     }
 
@@ -249,6 +270,28 @@ public class InviteService {
             base = base.substring(0, base.length() - 1);
         }
         return base + "/invite/" + invite.getToken();
+    }
+
+    private String resolveTag(String rawTag) {
+        String tag = rawTag == null ? "" : rawTag.trim().replaceFirst("^#", "").toUpperCase();
+        if (tag.isEmpty()) {
+            throw new RuntimeException("Email address or user handle is required");
+        }
+        return userRepository.findByTagIgnoreCase(tag)
+                .map(User::getEmail)
+                .orElseThrow(() -> new RuntimeException("No Voyago account uses #" + tag));
+    }
+
+    private String displayName(User user) {
+        return user.getFull_name() != null && !user.getFull_name().isBlank()
+                ? user.getFull_name() : user.getEmail();
+    }
+
+    public static String handleOf(User user) {
+        if (user == null || user.getTag() == null || user.getTag().isBlank()) {
+            return "";
+        }
+        return "#" + user.getTag();
     }
 
     private String normalize(String email) {

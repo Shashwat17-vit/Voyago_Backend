@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 
 import backend.voyago.SpringBackend.model.User;
 import backend.voyago.SpringBackend.repository.UserRepository;
+import backend.voyago.SpringBackend.service.UserTagService;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -21,6 +22,7 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
 
     private final UserRepository userRepository;
     private final JwtUtil jwtUtil;
+    private final UserTagService userTagService;
 
     @Value("${app.frontend-url:http://localhost:5173}")
     private String frontendUrl;
@@ -28,10 +30,11 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
     @Value("${app.cookie-secure:true}")
     private boolean cookieSecure;
 
-    public OAuth2SuccessHandler(UserRepository userRepository, JwtUtil jwtUtil)
+    public OAuth2SuccessHandler(UserRepository userRepository, JwtUtil jwtUtil, UserTagService userTagService)
     {
         this.userRepository = userRepository;
         this.jwtUtil = jwtUtil;
+        this.userTagService = userTagService;
     }
 
     @Override
@@ -55,7 +58,11 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
             user.setEmail(email);
             user.setPassword(null);
             user.setProvider(provider);
-            userRepository.save(user);
+            userTagService.assign(user);
+        } else if (email != null) {
+            userRepository.findByEmail(email)
+                    .filter(existing -> existing.getTag() == null || existing.getTag().isBlank())
+                    .ifPresent(userTagService::assign);
         }
 
         // Generate JWT and set as HttpOnly cookie so all API calls are authenticated

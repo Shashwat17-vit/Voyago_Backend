@@ -1,5 +1,6 @@
 package backend.voyago.SpringBackend.model;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -22,5 +23,9 @@ public class User {
     private String email;
     private String password;
     private String provider;
+
+    /** Short public handle, e.g. "A3F9". Globally unique, stored without the leading '#'. */
+    @Column(unique = true, length = 8)
+    private String tag;
 }
 

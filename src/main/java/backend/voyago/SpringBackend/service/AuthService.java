@@ -17,12 +17,15 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+    private final UserTagService userTagService;
 
-    public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtUtil jwtUtil)
+    public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtUtil jwtUtil,
+                       UserTagService userTagService)
     {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
+        this.userTagService = userTagService;
     }
 
     public String signup(SignupRequest request)
@@ -46,8 +49,7 @@ public class AuthService {
         user.setEmail(request.getEmail());
         user.setPassword(hashedPassword);
         user.setProvider("LOCAL");
-
-        userRepository.save(user);
+        userTagService.assign(user);
 
         return "User registered successfully";
     }
