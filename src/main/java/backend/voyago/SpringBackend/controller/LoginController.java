@@ -55,6 +55,7 @@ public class LoginController {
                 : (fallbackName != null && !fallbackName.isBlank() ? fallbackName : email);
         String tag = user != null ? user.getTag() : null;
         Map<String, Object> body = new java.util.HashMap<>();
+        body.put("uid", user != null ? user.getUid() : null);
         body.put("email", email != null ? email : "");
         body.put("name", name != null ? name : "");
         body.put("tag", tag);

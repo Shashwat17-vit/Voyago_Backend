@@ -79,6 +79,18 @@ spec:
                   name: voyago-secrets
                   key: GOOGLE_PLACES_API_KEY
                   optional: true
+            - name: STREAM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: voyago-secrets
+                  key: STREAM_API_KEY
+                  optional: true
+            - name: STREAM_API_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: voyago-secrets
+                  key: STREAM_API_SECRET
+                  optional: true
           readinessProbe:
             tcpSocket:
               port: 8080
